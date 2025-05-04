@@ -11,6 +11,11 @@ import Cart from "./pages/Cart";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
+// Импортируем компоненты админ-панели
+import AdminLayout from "./pages/admin/AdminLayout";
+import Dashboard from "./pages/admin/Dashboard";
+import CarsManagement from "./pages/admin/CarsManagement";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -25,6 +30,11 @@ const App = () => (
           <Route path="/car/:id" element={<CarDetail />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/login" element={<Login />} />
+          
+          {/* Административная панель */}
+          <Route path="/admin" element={<AdminLayout><Dashboard /></AdminLayout>} />
+          <Route path="/admin/cars" element={<AdminLayout><CarsManagement /></AdminLayout>} />
+          
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
