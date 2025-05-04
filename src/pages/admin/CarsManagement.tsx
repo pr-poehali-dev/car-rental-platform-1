@@ -1,17 +1,20 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import Icon from "@/components/ui/icon";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { Pagination } from "@/components/ui/pagination";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 // Моковые данные для автопарка
 const carsData = [
@@ -48,6 +51,7 @@ const carsData = [
     status: "Доступен",
     image: "https://images.unsplash.com/photo-1556189250-72ba954cfc2b?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80",
   },
+  // Добавим больше данных для демонстрации пагинации
   {
     id: 4,
     name: "Kia Rio",
@@ -70,45 +74,239 @@ const carsData = [
     status: "На ТО",
     image: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80",
   },
+  {
+    id: 6,
+    name: "Hyundai Solaris",
+    category: "Эконом",
+    year: 2020,
+    transmission: "Механика",
+    fuel: "Бензин",
+    price: 2200,
+    status: "Доступен",
+    image: "https://images.unsplash.com/photo-1580273916550-e323be2ae537?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80",
+  },
+  {
+    id: 7,
+    name: "Audi A6",
+    category: "Премиум",
+    year: 2021,
+    transmission: "Автомат",
+    fuel: "Бензин",
+    price: 7500,
+    status: "Доступен",
+    image: "https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80",
+  },
+  {
+    id: 8,
+    name: "Renault Logan",
+    category: "Эконом",
+    year: 2018,
+    transmission: "Механика",
+    fuel: "Бензин",
+    price: 1800,
+    status: "Недоступен",
+    image: "https://images.unsplash.com/photo-1590510696702-991de9fd889c?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80",
+  },
 ];
 
+type Car = {
+  id: number;
+  name: string;
+  category: string;
+  year: number;
+  transmission: string;
+  fuel: string;
+  price: number;
+  status: string;
+  image: string;
+};
+
+type Filters = {
+  status: string;
+  category: string;
+  fuel: string;
+  transmission: string;
+  priceRange: [number, number];
+  yearRange: [number, number];
+};
+
+// Дополнительные данные для фильтрации
+const fuels = ["Бензин", "Дизель", "Гибрид", "Электро"];
+const transmissions = ["Автомат", "Механика", "Робот", "Вариатор"];
+const categories = ["Эконом", "Бизнес", "Премиум", "Кроссовер"];
+const statuses = ["Доступен", "В прокате", "На ТО", "Недоступен"];
+
 const CarsManagement = () => {
-  const [cars, setCars] = useState(carsData);
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterCategory, setFilterCategory] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [selectedCar, setSelectedCar] = useState<any>(null);
+  const [cars, setCars] = useState<Car[]>(carsData);
+  const [selectedCars, setSelectedCars] = useState<number[]>([]);
+  const [isAllSelected, setIsAllSelected] = useState(false);
   
-  // Фильтрация автомобилей
-  const filteredCars = cars.filter(car => {
-    // Фильтр по статусу
-    if (filterStatus !== "all" && car.status !== filterStatus) return false;
-    
-    // Фильтр по категории
-    if (filterCategory !== "all" && car.category !== filterCategory) return false;
-    
-    // Поиск по названию
-    if (searchQuery && !car.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    
-    return true;
+  // Состояние для модальных окон
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
+  const [selectedCar, setSelectedCar] = useState<Car | null>(null);
+  const [bulkActionStatus, setBulkActionStatus] = useState("");
+  
+  // Состояние для фильтров
+  const [searchQuery, setSearchQuery] = useState("");
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState<Filters>({
+    status: "all",
+    category: "all",
+    fuel: "all",
+    transmission: "all",
+    priceRange: [0, 10000],
+    yearRange: [2010, 2025],
   });
   
-  // Обработчики для фильтров
-  const handleStatusFilterChange = (value: string) => {
-    setFilterStatus(value);
+  // Состояние для сортировки
+  const [sortField, setSortField] = useState<keyof Car | "">("");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  
+  // Состояние для пагинации
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
+  
+  // Применение фильтров и сортировки
+  const applyFilters = (data: Car[]) => {
+    return data.filter(car => {
+      // Базовые фильтры
+      if (filters.status !== "all" && car.status !== filters.status) return false;
+      if (filters.category !== "all" && car.category !== filters.category) return false;
+      if (filters.fuel !== "all" && car.fuel !== filters.fuel) return false;
+      if (filters.transmission !== "all" && car.transmission !== filters.transmission) return false;
+      
+      // Ценовой диапазон
+      if (car.price < filters.priceRange[0] || car.price > filters.priceRange[1]) return false;
+      
+      // Диапазон годов
+      if (car.year < filters.yearRange[0] || car.year > filters.yearRange[1]) return false;
+      
+      // Поиск по названию
+      if (searchQuery && !car.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      
+      return true;
+    });
   };
   
-  const handleCategoryFilterChange = (value: string) => {
-    setFilterCategory(value);
+  const applySorting = (data: Car[]) => {
+    if (!sortField) return data;
+    
+    return [...data].sort((a, b) => {
+      if (sortField === "price" || sortField === "year") {
+        return sortDirection === "asc" 
+          ? a[sortField] - b[sortField] 
+          : b[sortField] - a[sortField];
+      }
+      
+      const aValue = String(a[sortField]);
+      const bValue = String(b[sortField]);
+      
+      return sortDirection === "asc"
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue);
+    });
+  };
+  
+  // Применение пагинации
+  const paginateData = (data: Car[]) => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return data.slice(startIndex, startIndex + itemsPerPage);
+  };
+  
+  // Итоговые отфильтрованные и отсортированные данные
+  const filteredCars = applyFilters(cars);
+  const sortedCars = applySorting(filteredCars);
+  const paginatedCars = paginateData(sortedCars);
+  const totalPages = Math.ceil(sortedCars.length / itemsPerPage);
+  
+  // Обработчики для фильтров
+  const handleFilterChange = (key: keyof Filters, value: any) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1); // Сбрасываем на первую страницу при изменении фильтров
   };
   
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
+    setCurrentPage(1);
   };
   
-  // Обработчик для добавления/редактирования авто
-  const handleSaveCar = (carData: any) => {
+  const resetFilters = () => {
+    setFilters({
+      status: "all",
+      category: "all",
+      fuel: "all",
+      transmission: "all",
+      priceRange: [0, 10000],
+      yearRange: [2010, 2025],
+    });
+    setSearchQuery("");
+    setCurrentPage(1);
+  };
+  
+  // Обработчики для сортировки
+  const handleSort = (field: keyof Car) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+  
+  // Обработчики для пагинации
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+  
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(Number(value));
+    setCurrentPage(1);
+  };
+  
+  // Обработчики для массовых действий
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedCars([]);
+    } else {
+      setSelectedCars(paginatedCars.map(car => car.id));
+    }
+    setIsAllSelected(!isAllSelected);
+  };
+  
+  const handleSelectCar = (id: number) => {
+    if (selectedCars.includes(id)) {
+      setSelectedCars(prev => prev.filter(carId => carId !== id));
+    } else {
+      setSelectedCars(prev => [...prev, id]);
+    }
+  };
+  
+  useEffect(() => {
+    // Проверяем, выбраны ли все элементы на текущей странице
+    const allSelected = paginatedCars.length > 0 && paginatedCars.every(car => selectedCars.includes(car.id));
+    setIsAllSelected(allSelected);
+  }, [selectedCars, paginatedCars]);
+  
+  // Массовое изменение статуса
+  const handleBulkStatusChange = () => {
+    setCars(cars.map(car => 
+      selectedCars.includes(car.id) ? { ...car, status: bulkActionStatus } : car
+    ));
+    setSelectedCars([]);
+    setIsStatusDialogOpen(false);
+  };
+  
+  // Массовое удаление
+  const handleBulkDelete = () => {
+    setCars(cars.filter(car => !selectedCars.includes(car.id)));
+    setSelectedCars([]);
+    setIsDeleteDialogOpen(false);
+  };
+  
+  // Обработчики для отдельного автомобиля
+  const handleSaveCar = (carData: Omit<Car, "id">) => {
     if (selectedCar) {
       // Редактирование существующего авто
       setCars(cars.map(car => 
@@ -117,28 +315,22 @@ const CarsManagement = () => {
     } else {
       // Добавление нового авто
       const newCar = {
-        id: cars.length + 1,
-        ...carData,
-        status: "Доступен",
+        id: Math.max(...cars.map(c => c.id)) + 1,
+        ...carData as Car,
       };
       setCars([...cars, newCar]);
     }
-    
     setIsAddDialogOpen(false);
     setSelectedCar(null);
   };
   
-  // Открытие диалога редактирования
-  const openEditDialog = (car: any) => {
+  const openEditDialog = (car: Car) => {
     setSelectedCar(car);
     setIsAddDialogOpen(true);
   };
   
-  // Обработчик для удаления авто
   const handleDeleteCar = (id: number) => {
-    if (window.confirm("Вы уверены, что хотите удалить этот автомобиль?")) {
-      setCars(cars.filter(car => car.id !== id));
-    }
+    setCars(cars.filter(car => car.id !== id));
   };
   
   return (
@@ -176,70 +368,303 @@ const CarsManagement = () => {
       
       <Card>
         <CardHeader className="pb-0">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center flex-1">
+          <div className="flex flex-col space-y-4">
+            {/* Поиск и базовые фильтры */}
+            <div className="flex flex-wrap gap-4 items-start lg:items-center">
               <Input 
                 placeholder="Поиск автомобилей..." 
                 value={searchQuery}
                 onChange={handleSearchChange}
-                className="w-full md:w-64"
+                className="w-full sm:w-64"
               />
               
-              <div className="flex gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap gap-2 flex-1">
                 <Select 
-                  value={filterStatus} 
-                  onValueChange={handleStatusFilterChange}
+                  value={filters.status} 
+                  onValueChange={(value) => handleFilterChange("status", value)}
                 >
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-[150px]">
                     <SelectValue placeholder="Статус" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Все статусы</SelectItem>
-                    <SelectItem value="Доступен">Доступен</SelectItem>
-                    <SelectItem value="В прокате">В прокате</SelectItem>
-                    <SelectItem value="На ТО">На ТО</SelectItem>
-                    <SelectItem value="Недоступен">Недоступен</SelectItem>
+                    {statuses.map(status => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 
                 <Select 
-                  value={filterCategory} 
-                  onValueChange={handleCategoryFilterChange}
+                  value={filters.category} 
+                  onValueChange={(value) => handleFilterChange("category", value)}
                 >
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-[150px]">
                     <SelectValue placeholder="Категория" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Все категории</SelectItem>
-                    <SelectItem value="Эконом">Эконом</SelectItem>
-                    <SelectItem value="Бизнес">Бизнес</SelectItem>
-                    <SelectItem value="Премиум">Премиум</SelectItem>
-                    <SelectItem value="Кроссовер">Кроссовер</SelectItem>
+                    {categories.map(category => (
+                      <SelectItem key={category} value={category}>{category}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                
+                <Button 
+                  variant="outline" 
+                  size="icon"
+                  onClick={() => setAdvancedFiltersOpen(!advancedFiltersOpen)}
+                  className="ml-auto"
+                >
+                  <Icon name="SlidersHorizontal" className="h-4 w-4" />
+                </Button>
               </div>
             </div>
+            
+            {/* Расширенные фильтры */}
+            {advancedFiltersOpen && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 border-t">
+                <div>
+                  <Label className="mb-1 block text-sm">Тип топлива</Label>
+                  <Select 
+                    value={filters.fuel} 
+                    onValueChange={(value) => handleFilterChange("fuel", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Все типы" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Все типы</SelectItem>
+                      {fuels.map(fuel => (
+                        <SelectItem key={fuel} value={fuel}>{fuel}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <Label className="mb-1 block text-sm">Трансмиссия</Label>
+                  <Select 
+                    value={filters.transmission} 
+                    onValueChange={(value) => handleFilterChange("transmission", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Все типы" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Все типы</SelectItem>
+                      {transmissions.map(transmission => (
+                        <SelectItem key={transmission} value={transmission}>{transmission}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <Label className="mb-1 block text-sm">Ценовой диапазон (₽)</Label>
+                  <div className="flex items-center space-x-2">
+                    <Input 
+                      type="number" 
+                      value={filters.priceRange[0]}
+                      onChange={(e) => handleFilterChange("priceRange", [
+                        Number(e.target.value), filters.priceRange[1]
+                      ])}
+                      className="w-full"
+                      placeholder="От"
+                    />
+                    <span>-</span>
+                    <Input 
+                      type="number" 
+                      value={filters.priceRange[1]}
+                      onChange={(e) => handleFilterChange("priceRange", [
+                        filters.priceRange[0], Number(e.target.value)
+                      ])}
+                      className="w-full"
+                      placeholder="До"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <Label className="mb-1 block text-sm">Год выпуска</Label>
+                  <div className="flex items-center space-x-2">
+                    <Input 
+                      type="number" 
+                      value={filters.yearRange[0]}
+                      onChange={(e) => handleFilterChange("yearRange", [
+                        Number(e.target.value), filters.yearRange[1]
+                      ])}
+                      className="w-full"
+                      placeholder="От"
+                    />
+                    <span>-</span>
+                    <Input 
+                      type="number" 
+                      value={filters.yearRange[1]}
+                      onChange={(e) => handleFilterChange("yearRange", [
+                        filters.yearRange[0], Number(e.target.value)
+                      ])}
+                      className="w-full"
+                      placeholder="До"
+                    />
+                  </div>
+                </div>
+                
+                <div className="md:col-span-2 lg:col-span-4 flex justify-end">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={resetFilters}
+                    className="flex items-center"
+                  >
+                    <Icon name="RotateCcw" className="mr-2 h-3.5 w-3.5" />
+                    Сбросить фильтры
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {/* Массовые действия */}
+            {selectedCars.length > 0 && (
+              <div className="flex items-center gap-2 bg-muted/50 p-2 rounded-md">
+                <span className="text-sm text-muted-foreground">
+                  Выбрано: {selectedCars.length}
+                </span>
+                
+                <div className="ml-auto flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setIsStatusDialogOpen(true)}
+                    className="flex items-center"
+                  >
+                    <Icon name="Tag" className="mr-2 h-3.5 w-3.5" />
+                    Изменить статус
+                  </Button>
+                  
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    onClick={() => setIsDeleteDialogOpen(true)}
+                    className="flex items-center"
+                  >
+                    <Icon name="Trash2" className="mr-2 h-3.5 w-3.5" />
+                    Удалить
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </CardHeader>
+        
         <CardContent>
           <div className="rounded-md border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[50px]">ID</TableHead>
+                  <TableHead className="w-[40px]">
+                    <Checkbox 
+                      checked={isAllSelected} 
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </TableHead>
+                  <TableHead 
+                    className="w-[60px] cursor-pointer"
+                    onClick={() => handleSort("id")}
+                  >
+                    <div className="flex items-center">
+                      ID
+                      {sortField === "id" && (
+                        <Icon 
+                          name={sortDirection === "asc" ? "ArrowUp" : "ArrowDown"} 
+                          className="ml-1 h-3 w-3"
+                        />
+                      )}
+                    </div>
+                  </TableHead>
                   <TableHead className="w-[100px]">Фото</TableHead>
-                  <TableHead>Название</TableHead>
-                  <TableHead>Категория</TableHead>
-                  <TableHead>Год</TableHead>
-                  <TableHead>Цена/день</TableHead>
-                  <TableHead>Статус</TableHead>
+                  <TableHead 
+                    className="cursor-pointer"
+                    onClick={() => handleSort("name")}
+                  >
+                    <div className="flex items-center">
+                      Название
+                      {sortField === "name" && (
+                        <Icon 
+                          name={sortDirection === "asc" ? "ArrowUp" : "ArrowDown"} 
+                          className="ml-1 h-3 w-3"
+                        />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer"
+                    onClick={() => handleSort("category")}
+                  >
+                    <div className="flex items-center">
+                      Категория
+                      {sortField === "category" && (
+                        <Icon 
+                          name={sortDirection === "asc" ? "ArrowUp" : "ArrowDown"} 
+                          className="ml-1 h-3 w-3"
+                        />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer"
+                    onClick={() => handleSort("year")}
+                  >
+                    <div className="flex items-center">
+                      Год
+                      {sortField === "year" && (
+                        <Icon 
+                          name={sortDirection === "asc" ? "ArrowUp" : "ArrowDown"} 
+                          className="ml-1 h-3 w-3"
+                        />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer"
+                    onClick={() => handleSort("price")}
+                  >
+                    <div className="flex items-center">
+                      Цена/день
+                      {sortField === "price" && (
+                        <Icon 
+                          name={sortDirection === "asc" ? "ArrowUp" : "ArrowDown"} 
+                          className="ml-1 h-3 w-3"
+                        />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer"
+                    onClick={() => handleSort("status")}
+                  >
+                    <div className="flex items-center">
+                      Статус
+                      {sortField === "status" && (
+                        <Icon 
+                          name={sortDirection === "asc" ? "ArrowUp" : "ArrowDown"} 
+                          className="ml-1 h-3 w-3"
+                        />
+                      )}
+                    </div>
+                  </TableHead>
                   <TableHead className="text-right">Действия</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCars.length > 0 ? (
-                  filteredCars.map((car) => (
+                {paginatedCars.length > 0 ? (
+                  paginatedCars.map((car) => (
                     <TableRow key={car.id}>
+                      <TableCell>
+                        <Checkbox 
+                          checked={selectedCars.includes(car.id)} 
+                          onCheckedChange={() => handleSelectCar(car.id)}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{car.id}</TableCell>
                       <TableCell>
                         <div className="h-14 w-20 bg-gray-100 rounded">
@@ -261,7 +686,9 @@ const CarsManagement = () => {
                               ? "success" 
                               : car.status === "В прокате" 
                                 ? "default" 
-                                : "secondary"
+                                : car.status === "На ТО"
+                                  ? "warning"
+                                  : "secondary"
                           }
                         >
                           {car.status}
@@ -289,7 +716,7 @@ const CarsManagement = () => {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24 text-gray-500">
+                    <TableCell colSpan={9} className="text-center h-24 text-gray-500">
                       Автомобили не найдены
                     </TableCell>
                   </TableRow>
@@ -297,8 +724,93 @@ const CarsManagement = () => {
               </TableBody>
             </Table>
           </div>
+          
+          {/* Пагинация */}
+          {sortedCars.length > 0 && (
+            <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center space-x-2 text-sm text-gray-500">
+                <span>Показано {paginatedCars.length} из {sortedCars.length}</span>
+                <Select
+                  value={String(itemsPerPage)}
+                  onValueChange={handleItemsPerPageChange}
+                >
+                  <SelectTrigger className="h-8 w-[70px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5</SelectItem>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span>на странице</span>
+              </div>
+              
+              <Pagination 
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
+      
+      {/* Диалог массового изменения статуса */}
+      <AlertDialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Изменить статус</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы собираетесь изменить статус для {selectedCars.length} выбранных автомобилей.
+              Выберите новый статус.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="my-4">
+            <Select
+              value={bulkActionStatus}
+              onValueChange={setBulkActionStatus}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите статус" />
+              </SelectTrigger>
+              <SelectContent>
+                {statuses.map(status => (
+                  <SelectItem key={status} value={status}>{status}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkStatusChange} disabled={!bulkActionStatus}>
+              Применить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      {/* Диалог массового удаления */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Подтвердите удаление</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы собираетесь удалить {selectedCars.length} автомобилей. 
+              Это действие нельзя отменить.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground">
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
